@@ -4,45 +4,34 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #define FLAG_BLOCK_INDEPENDENCE(flags) (flags & 0x20)
+#define FLAG_BLOCK_CHECKSUM (flags & 0x10)
 #define FLAG_CONTENT_SIZE(flags) (flags & 0x08)
+#define FLAG_CONTENT_CHECKSUM (flags & 0x04)
 #define FLAG_DICTIONARY_ID(flags) (flags & 0x01)
-	// bool flag_block_independence = flags & 0x20;
-	// bool flag_block_checksum = flags & 0x10;
-	// bool flag_content_size = flags & 0x08;
-	// bool flag_content_checksum = flags & 0x04;
-	// bool flag_dictionary_id = flags & 0x01;
 
 void decompress_lz4(uint8_t *dst, uint8_t *src){
-	if(memcmp(src, "\x04\x22\x4D\x18", 4) != 0){
-		printf("Error: Invalid FOURCC in header.\n");
-		return;
-	}
+	// Check FOURCC code.
+	assert(memcmp(src, "\x04\x22\x4D\x18", 4) == 0);
 	src += 4;
 	
 	uint8_t flags = src[0];
 	uint8_t bd_byte = src[1];
 	src += 2;
 	
-	if((flags & 0xC0) != 0x40){
-		printf("Error: Invalid LZ4 version number.\n");
-		return;
-	}
+	// Check LZ4 version number is valid.
+	assert((flags & 0xC0) == 0x40);
 	
 	// Reserved bits must always be 0.
-	if((flags & 0x02) || (bd_byte & 0x00)){
-		printf("Error: Invalid reserved bits state\n");
-		return;
-	}
+	assert((flags & 0x02) == 0 && (bd_byte & 0x00) == 0);
 	
 	// Read content size.
 	uint64_t content_size = 0;
 	if(FLAG_CONTENT_SIZE(flags)){
 		memcpy(&content_size, src, 8);
 		src += 8;
-		
-		// printf("Content size: %d\n", content_size);
 	}
 	
 	// Read dictionary ID.
@@ -51,8 +40,8 @@ void decompress_lz4(uint8_t *dst, uint8_t *src){
 		memcpy(&dictionary_id, src, 4);
 		src += 4;
 		
-		printf("Dictionary IDs not implemented.\n");
-		return;
+		puts("Dictionary IDs not implemented.");
+		abort();
 	}
 	
 	uint8_t header_checksum = src[0];
@@ -63,20 +52,16 @@ void decompress_lz4(uint8_t *dst, uint8_t *src){
 	src += 4;
 	
 	if(block_size & 0x80000000){
-		printf("Block is uncompressed and this is NYI...\n");
-		return;
-	} else {
-		// printf("block size: %d\n", block_size);
+		puts("Block is uncompressed and this is NYI.");
+		abort();
 	}
 	
 	while(true){
 		uint8_t token = *(src++);
-		// printf("token is 0x%02X\n", token);
 		
 		// Decode the literal run length.
 		size_t len = (token >> 4) & 0xF;
 		if(len == 15) do len += *src; while(*(src++) == 255);
-		// printf("literals: %d\n", len);
 		
 		// Copy literals.
 		for(size_t i = 0; i < len; i++) dst[i] = src[i];
@@ -86,7 +71,6 @@ void decompress_lz4(uint8_t *dst, uint8_t *src){
 		uint16_t offset = 0;
 		memcpy(&offset, src, 2);
 		src += 2;
-		// printf("backref offset: %d\n", offset);
 		
 		// Done if offset == 0
 		if(offset == 0) break;
@@ -94,7 +78,6 @@ void decompress_lz4(uint8_t *dst, uint8_t *src){
 		// Decode backref run length.
 		len = (token & 0xF) + 4;
 		if(len == 19) do len += *src; while(*(src++) == 255);
-		// printf("backref len: %d\n", len);
 		
 		// Copy backref.
 		for(size_t i = 0; i < len; i++) dst[i] = dst[i - offset];
@@ -110,7 +93,7 @@ int main(int argc, char *argv[]){
 	fread(SRC, 1, sizeof(SRC), f);
 	
 	decompress_lz4(DST, SRC);
-	printf("%s", DST);
+	puts(DST);
 	
 	return EXIT_SUCCESS;
 }
