@@ -56,32 +56,39 @@ void decompress_lz4(uint8_t *dst, uint8_t *src){
 		abort();
 	}
 	
+	size_t src_cursor = 0;
+	size_t dst_cursor = 0;
+	
 	while(true){
-		uint8_t token = *(src++);
+		uint8_t token = src[src_cursor++];
 		
 		// Decode the literal run length.
 		size_t len = (token >> 4) & 0xF;
-		if(len == 15) do len += *src; while(*(src++) == 255);
+		if(len == 15) do len += src[src_cursor]; while(src[src_cursor++] == 255);
 		
 		// Copy literals.
-		for(size_t i = 0; i < len; i++) dst[i] = src[i];
-		src += len, dst += len;
+		for(size_t i = 0; i < len; i++) dst[dst_cursor + i] = src[src_cursor + i];
+		src_cursor += len, dst_cursor += len;
 		
 		// Get the backref offset.
 		uint16_t offset = 0;
-		memcpy(&offset, src, 2);
-		src += 2;
+		memcpy(&offset, src + src_cursor, 2);
+		src_cursor += 2;
+		
+		// Calculate the backref address.
+		assert(offset <= dst_cursor);
+		uint8_t *backref = dst - offset;
 		
 		// Done if offset == 0
 		if(offset == 0) break;
 		
 		// Decode backref run length.
 		len = (token & 0xF) + 4;
-		if(len == 19) do len += *src; while(*(src++) == 255);
+		if(len == 19) do len += src[src_cursor]; while(src[src_cursor++] == 255);
 		
 		// Copy backref.
-		for(size_t i = 0; i < len; i++) dst[i] = dst[i - offset];
-		dst += len;
+		for(size_t i = 0; i < len; i++) dst[dst_cursor + i] = backref[dst_cursor + i];
+		dst_cursor += len;
 	}
 }
 
