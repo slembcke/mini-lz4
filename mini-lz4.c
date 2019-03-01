@@ -12,7 +12,18 @@
 #define FLAG_CONTENT_CHECKSUM (flags & 0x04)
 #define FLAG_DICTIONARY_ID(flags) (flags & 0x01)
 
-void decompress_lz4(uint8_t *dst, uint8_t *src){
+// Decompress lz4 data.
+// dst: Pointer to the destination buffer.
+// dst_size: Size of the destination buffer.
+// src: Pointer to the lz4 data.
+// src_size: Size of the lz4 data.
+// Returns a pointer to the decompressed data.
+// If dst is NULL it will be allocated with malloc() if the stream contains the content size.
+// Does *NOT* provide any error handling and aborts on an error.
+uint8_t *decompress_lz4(uint8_t *dst, size_t dst_size, uint8_t *src, size_t src_size){
+	// TODO src_size is not used.
+	assert(src);
+	
 	// Check FOURCC code.
 	assert(memcmp(src, "\x04\x22\x4D\x18", 4) == 0);
 	src += 4;
@@ -28,11 +39,17 @@ void decompress_lz4(uint8_t *dst, uint8_t *src){
 	assert((flags & 0x02) == 0 && (bd_byte & 0x00) == 0);
 	
 	// Read content size.
-	uint64_t content_size = 0;
+	uint64_t content_size = dst_size;
 	if(FLAG_CONTENT_SIZE(flags)){
 		memcpy(&content_size, src, 8);
 		src += 8;
+		
+		assert(dst_size == 0 || content_size <= dst_size);
 	}
+	assert(content_size > 0);
+	
+	// Allocate destination memory if needed.
+	if(dst == NULL) dst = malloc(content_size);
 	
 	// Read dictionary ID.
 	uint32_t dictionary_id = 0;
@@ -64,14 +81,22 @@ void decompress_lz4(uint8_t *dst, uint8_t *src){
 		
 		// Decode the literal run length.
 		size_t len = (token >> 4) & 0xF;
-		if(len == 15) do len += src[src_cursor]; while(src[src_cursor++] == 255);
+		if(len == 15) do {
+			assert(src_cursor <= block_size);
+			len += src[src_cursor];
+		} while(src[src_cursor++] == 255);
 		
 		// Copy literals.
-		for(size_t i = 0; i < len; i++) dst[dst_cursor + i] = src[src_cursor + i];
+		assert(dst_cursor + len <= content_size);
+		memcpy(dst + dst_cursor, src + src_cursor, len);
 		src_cursor += len, dst_cursor += len;
+		
+		// Check if we are at the end of the stream.
+		if(src_cursor == block_size) break;
 		
 		// Get the backref offset.
 		uint16_t offset = 0;
+		assert(src_cursor + 2 <= block_size);
 		memcpy(&offset, src + src_cursor, 2);
 		src_cursor += 2;
 		
@@ -79,28 +104,30 @@ void decompress_lz4(uint8_t *dst, uint8_t *src){
 		assert(offset <= dst_cursor);
 		uint8_t *backref = dst - offset;
 		
-		// Done if offset == 0
-		if(offset == 0) break;
-		
 		// Decode backref run length.
 		len = (token & 0xF) + 4;
-		if(len == 19) do len += src[src_cursor]; while(src[src_cursor++] == 255);
+		if(len == 19) do {
+			assert(src_cursor <= block_size);
+			len += src[src_cursor];
+		} while(src[src_cursor++] == 255);
 		
 		// Copy backref.
+		assert(dst_cursor + len <= content_size);
 		for(size_t i = 0; i < len; i++) dst[dst_cursor + i] = backref[dst_cursor + i];
 		dst_cursor += len;
 	}
+	
+	return dst;
 }
 
 uint8_t SRC[1146627];
-uint8_t DST[2493109];
 
 int main(int argc, char *argv[]){
 	FILE *f = fopen("words.lz4", "r");
 	fread(SRC, 1, sizeof(SRC), f);
 	
-	decompress_lz4(DST, SRC);
-	puts(DST);
+	uint8_t *output = decompress_lz4(NULL, 0, SRC, 0);
+	puts(output);
 	
 	return EXIT_SUCCESS;
 }
