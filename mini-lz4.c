@@ -7,9 +7,9 @@
 #include <assert.h>
 
 #define FLAG_BLOCK_INDEPENDENCE(flags) (flags & 0x20)
-#define FLAG_BLOCK_CHECKSUM (flags & 0x10)
+#define FLAG_BLOCK_CHECKSUM(flags) (flags & 0x10)
 #define FLAG_CONTENT_SIZE(flags) (flags & 0x08)
-#define FLAG_CONTENT_CHECKSUM (flags & 0x04)
+#define FLAG_CONTENT_CHECKSUM(flags) (flags & 0x04)
 #define FLAG_DICTIONARY_ID(flags) (flags & 0x01)
 
 // Decompress lz4 data.
@@ -36,6 +36,7 @@ uint8_t *decompress_lz4(uint8_t *dst, size_t dst_size, uint8_t *src, size_t src_
 	assert((flags & 0xC0) == 0x40);
 	
 	// Reserved bits must always be 0.
+	// TODO uhh db_byte mask is 0?
 	assert((flags & 0x02) == 0 && (bd_byte & 0x00) == 0);
 	
 	// Read content size.
