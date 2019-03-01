@@ -1,5 +1,5 @@
-local dbg = dofile("../debugger.lua/debugger.lua")
-dbg.auto_where = 2
+-- local dbg = dofile("../debugger.lua/debugger.lua")
+-- dbg.auto_where = 2
 
 local FLAG_BLOCK_INDEPENDENCE = 0x20
 local FLAG_BLOCK_CHECKSUM = 0x10
@@ -7,8 +7,7 @@ local FLAG_CONTENT_SIZE = 0x08
 local FLAG_CONTENT_CHECKSUM = 0x04
 local FLAG_DICTIONARY_ID = 0x01
 
-function decompress_lz4(src, dst)
-	local dst = ""
+function decompress_lz4(src)
 	local src_cursor = 1
 	
 	local function read(format)
@@ -51,6 +50,7 @@ function decompress_lz4(src, dst)
 		return len
 	end
 	
+	local chunks, buffer = {}, ""
 	while(true) do
 		local offset, len
 		local token = read("B")
@@ -60,33 +60,44 @@ function decompress_lz4(src, dst)
 		if len == 15 then len = extend_len(len) end
 		
 		-- Copy literals.
-		dst = dst..src:sub(src_cursor, src_cursor + len - 1)
+		buffer = buffer..src:sub(src_cursor, src_cursor + len - 1)
 		src_cursor = src_cursor + len
 		
 		-- Check if we are at the end of the stream.
 		if src_cursor == block_end then break end
-		dbg(src_cursor < 1000)
-		
-		local foo = 1 + "Str"
+		-- dbg(src_cursor < 1000)
 		
 		-- Get the backref offset.
 		offset = read("<I2")
-		offset = -offset
+		assert(offset < #buffer)
 		
 		-- Decode the backref run length.
 		len = (token & 0xF) + 4
 		if len == 19 then len = extend_len(len) end
 		
 		-- Copy backref.
-		for i = 0, len - 1 do dst = dst..dst:sub(offset, offset) end
+		while len > 0 do
+			local sub_len = math.min(len, offset)
+			buffer = buffer..buffer:sub(-offset, sub_len - offset - 1)
+			len = len - sub_len
+		end
+		-- for i = 0, len - 1 do buffer = buffer..buffer:sub(offset, offset) end
+		
+		if #buffer > 90000 then
+			table.insert(chunks, buffer:sub(1, -65537))
+			buffer = buffer:sub(-65536, -1)
+		end
 	end
 	
+	table.insert(chunks, buffer)
+	return table.concat(chunks)
 end
 
 local file = io.open("words.lz4", "rb")
 local src = file:read("a")
 file:close()
 
-dbg.call(decompress_lz4, src)
+local foo = decompress_lz4(src)
+print(foo)
 
 return
