@@ -119,15 +119,3 @@ uint8_t *decompress_lz4(uint8_t *dst, size_t dst_size, uint8_t *src, size_t src_
 	
 	return dst;
 }
-
-uint8_t SRC[1146627];
-
-int main(int argc, char *argv[]){
-	FILE *f = fopen("words.lz4", "r");
-	fread(SRC, 1, sizeof(SRC), f);
-	
-	uint8_t *output = decompress_lz4(NULL, 0, SRC, 0);
-	puts(output);
-	
-	return EXIT_SUCCESS;
-}
